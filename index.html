@@ -8,9 +8,12 @@
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
   <style>
     body { font-family: sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 30px 16px; margin: 0; }
-    .card { background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
+    .card { background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 420px; width: 100%; text-align: center; }
     h2 { margin: 0 0 8px; font-size: 20px; color: #111827; }
-    #status { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
+    #status { font-size: 14px; color: #6b7280; margin-bottom: 16px; line-height: 1.5; }
+    .url-box { display: none; margin-bottom: 16px; text-align: left; background: #fef2f2; padding: 12px; border-radius: 8px; border: 1px solid #fecaca; }
+    .url-box input { width: 100%; padding: 8px; margin: 6px 0 8px; border: 1px solid #d1d5db; border-radius: 6px; box-sizing: border-box; font-size: 13px; }
+    .url-box button { background: #dc2626; color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; width: 100%; }
     #uploadBtn { background: #4f46e5; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; }
     #uploadBtn:disabled { background: #9ca3af; cursor: not-allowed; }
     #preview { max-width: 100%; max-height: 260px; margin-top: 16px; border-radius: 10px; display: none; object-fit: contain; }
@@ -23,7 +26,15 @@
 <body>
   <div class="card">
     <h2>จำแนกรูปภาพ AI</h2>
-    <div id="status">กำลังโหลดโมเดล... กรุณารอสักครู่</div>
+    <div id="status">1/2 กำลังโหลดไลบรารี AI...</div>
+
+    <!-- ช่องเปลี่ยนลิงก์โมเดล กรณีลิงก์เดิมโหลดไม่ได้ -->
+    <div class="url-box" id="urlBox">
+      <div style="font-size:13px; color:#991b1b; font-weight:bold;">ไม่สามารถโหลดโมเดลจากลิงก์เดิมได้</div>
+      <div style="font-size:12px; color:#7f1d1d;">กรุณาไปที่ Teachable Machine > Export Model > Upload my model แล้วนำลิงก์ใหม่มาวางที่นี่:</div>
+      <input type="text" id="newUrlInput" value="https://teachablemachine.withgoogle.com/models/TheA52t0_/">
+      <button type="button" onclick="retryLoadModel()">โหลดโมเดลจากลิงก์นี้</button>
+    </div>
 
     <button type="button" id="uploadBtn" disabled>กำลังเตรียมระบบ...</button>
     <input type="file" id="upload" accept="image/*" style="display: none;">
@@ -33,5 +44,109 @@
   </div>
 
   <script>
-    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
+    let MODEL_URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
     let model;
+
+    const statusEl = document.getElementById("status");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const uploadInput = document.getElementById("upload");
+    const previewImg = document.getElementById("preview");
+    const labelContainer = document.getElementById("label-container");
+    const urlBox = document.getElementById("urlBox");
+
+    async function loadModel(url) {
+      if (!url.endsWith("/")) url += "/";
+      urlBox.style.display = "none";
+      uploadBtn.disabled = true;
+      uploadBtn.innerText = "กำลังเตรียมระบบ...";
+
+      if (typeof tmImage === "undefined") {
+        statusEl.innerText = "โหลดไลบรารีไม่สำเร็จ (ตรวจสอบอินเทอร์เน็ตหรือ AdBlocker)";
+        statusEl.style.color = "#dc2626";
+        return;
+      }
+
+      statusEl.innerText = "2/2 กำลังดาวน์โหลดไฟล์โมเดล...";
+      statusEl.style.color = "#2563eb";
+
+      try {
+        // ตั้งเวลา Timeout 15 วินาที ป้องกันการค้างตลอดไป
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("หมดเวลาเชื่อมต่อ (เกิน 15 วินาที) ลิงก์โมเดลอาจใช้ไม่ได้")), 15000)
+        );
+
+        model = await Promise.race([
+          tmImage.load(url + "model.json", url + "metadata.json"),
+          timeoutPromise
+        ]);
+
+        statusEl.innerText = "โมเดลพร้อมใช้งาน (เลือกได้ 1 ภาพ)";
+        statusEl.style.color = "#059669";
+        uploadBtn.disabled = false;
+        uploadBtn.innerText = "อัปโหลดรูปภาพ";
+      } catch (err) {
+        statusEl.innerText = "เกิดข้อผิดพลาด: " + err.message;
+        statusEl.style.color = "#dc2626";
+        urlBox.style.display = "block";
+      }
+    }
+
+    function retryLoadModel() {
+      const newUrl = document.getElementById("newUrlInput").value.trim();
+      if (newUrl) loadModel(newUrl);
+    }
+
+    window.addEventListener("load", () => loadModel(MODEL_URL));
+
+    uploadBtn.addEventListener("click", () => {
+      uploadInput.value = "";
+      uploadInput.click();
+    });
+
+    uploadInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      statusEl.innerText = "กำลังประมวลผลรูปภาพ...";
+      statusEl.style.color = "#2563eb";
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        previewImg.onload = async () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 224;
+            canvas.height = 224;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(previewImg, 0, 0, 224, 224);
+
+            const predictions = await model.predict(canvas);
+            predictions.sort((a, b) => b.probability - a.probability);
+
+            labelContainer.innerHTML = predictions.map(p => {
+              const pct = (p.probability * 100).toFixed(1);
+              return `
+                <div class="row">
+                  <div><b>${p.className}</b>: ${pct}%</div>
+                  <div class="bar-bg"><div class="bar" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join("");
+
+            statusEl.innerText = "วิเคราะห์เสร็จสิ้น";
+            statusEl.style.color = "#059669";
+            uploadBtn.innerText = "เปลี่ยนรูปภาพ";
+          } catch (err) {
+            statusEl.innerText = "วิเคราะห์ภาพไม่สำเร็จ: " + err.message;
+            statusEl.style.color = "#dc2626";
+          }
+        };
+
+        previewImg.src = event.target.result;
+        previewImg.style.display = "inline-block";
+      };
+
+      reader.readAsDataURL(file);
+    });
+  </script>
+</body>
+</html>
