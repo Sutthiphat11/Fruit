@@ -1,59 +1,503 @@
-<div>Teachable Machine Image Model</div>
-<button type="button" onclick="init()">Start</button>
-<div id="webcam-container"></div>
-<div id="label-container"></div>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-<script type="text/javascript">
-    // More API functions here:
-    // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
-
-    // the link to your model provided by Teachable Machine export panel
-    const URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
-
-    let model, webcam, labelContainer, maxPredictions;
-
-    // Load the image model and setup the webcam
-    async function init() {
-        const modelURL = URL + "model.json";
-        const metadataURL = URL + "metadata.json";
-
-        // load the model and metadata
-        // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
-        // or files from your local hard drive
-        // Note: the pose library adds "tmImage" object to your window (window.tmImage)
-        model = await tmImage.load(modelURL, metadataURL);
-        maxPredictions = model.getTotalClasses();
-
-        // Convenience function to setup a webcam
-        const flip = true; // whether to flip the webcam
-        webcam = new tmImage.Webcam(200, 200, flip); // width, height, flip
-        await webcam.setup(); // request access to the webcam
-        await webcam.play();
-        window.requestAnimationFrame(loop);
-
-        // append elements to the DOM
-        document.getElementById("webcam-container").appendChild(webcam.canvas);
-        labelContainer = document.getElementById("label-container");
-        for (let i = 0; i < maxPredictions; i++) { // and class labels
-            labelContainer.appendChild(document.createElement("div"));
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจำแนกรูปภาพอัจฉริยะ | Teachable Machine</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Prompt สำหรับภาษาไทยที่ทันสมัยและอ่านง่าย -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- TensorFlow.js และ Teachable Machine Image Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    },
+                }
+            }
         }
-    }
+    </script>
+</head>
+<body class="bg-gradient-to-br from-slate-50 via-indigo-50/30 to-slate-100 text-slate-900 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
 
-    async function loop() {
-        webcam.update(); // update the webcam frame
-        await predict();
-        window.requestAnimationFrame(loop);
-    }
+    <!-- แถบเมนูด้านบน (Header) -->
+    <header class="bg-white/85 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-20">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between">
+            <div class="flex items-center gap-3.5">
+                <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+                    <!-- ไอคอน AI Vision -->
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900 leading-tight">ระบบวิเคราะห์รูปภาพ AI</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Teachable Machine Image Classification</p>
+                </div>
+            </div>
 
-    // run the webcam image through the image model
-    async function predict() {
-        // predict can take in an image, video or canvas html element
-        const prediction = await model.predict(webcam.canvas);
-        for (let i = 0; i < maxPredictions; i++) {
-            const classPrediction =
-                prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-            labelContainer.childNodes[i].innerHTML = classPrediction;
+            <!-- สถานะการโหลดโมเดล -->
+            <div id="model-status-badge" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 transition-all shadow-2xs">
+                <span id="model-status-dot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span id="model-status-text">กำลังโหลดโมเดล AI...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- พื้นที่ทำงานหลัก -->
+    <main class="flex-grow max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10">
+
+        <!-- แถบแจ้งเตือนข้อผิดพลาด (Error Banner) -->
+        <div id="error-banner" class="hidden mb-6 rounded-2xl bg-red-50 border border-red-200 p-4 flex items-start gap-3 shadow-sm transition-all" role="alert">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-600 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+            </svg>
+            <div class="flex-1 text-sm text-red-800">
+                <h3 id="error-title" class="font-semibold">เกิดข้อผิดพลาด</h3>
+                <p id="error-message" class="mt-0.5 text-red-700"></p>
+            </div>
+            <button type="button" onclick="hideError()" class="p-1.5 rounded-xl text-red-500 hover:bg-red-100 transition-colors" aria-label="ปิดการแจ้งเตือน">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                </svg>
+            </button>
+        </div>
+
+        <!-- โครงสร้าง 2 คอลัมน์บนหน้าจอใหญ่ -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 items-start">
+
+            <!-- คอลัมน์ซ้าย: อัปโหลดรูปภาพ (1 ภาพ) และแสดงตัวอย่าง -->
+            <section class="lg:col-span-6 bg-white rounded-3xl border border-slate-200/80 shadow-lg shadow-slate-200/40 p-5 sm:p-7 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base sm:text-lg font-bold text-slate-900">นำเข้ารูปภาพ</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">อัปโหลดรูปภาพที่ต้องการตรวจสอบ (ครั้งละ 1 ภาพ)</p>
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        1 รูปภาพ
+                    </span>
+                </div>
+
+                <!-- Input File แบบซ่อน (รองรับเฉพาะ 1 ไฟล์ภาพ) -->
+                <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" onchange="handleImageUpload(event)">
+
+                <!-- พื้นที่ Dropzone และแสดงภาพตัวอย่าง -->
+                <div id="dropzone" onclick="triggerFileSelect()"
+                    class="relative w-full aspect-square max-h-[380px] mx-auto rounded-2xl border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-slate-50/80 hover:bg-indigo-50/40 transition-all cursor-pointer overflow-hidden flex flex-col items-center justify-center p-6 text-center group">
+
+                    <!-- ข้อความแนะนำเมื่อยังไม่ได้เลือกรูป -->
+                    <div id="upload-prompt" class="flex flex-col items-center">
+                        <div class="w-16 h-16 rounded-2xl bg-indigo-100/80 text-indigo-600 group-hover:scale-105 group-hover:bg-indigo-600 group-hover:text-white transition-all duration-200 flex items-center justify-center mb-4 shadow-xs">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                            </svg>
+                        </div>
+                        <p class="text-sm sm:text-base font-semibold text-slate-800">คลิกเพื่อเลือกรูปภาพ หรือลากไฟล์มาวางที่นี่</p>
+                        <p class="text-xs text-slate-500 mt-1.5">รองรับไฟล์ JPG, PNG, WebP (จำนวน 1 ภาพ)</p>
+                    </div>
+
+                    <!-- รูปภาพตัวอย่างที่อัปโหลด -->
+                    <img id="uploaded-image-preview" alt="ภาพตัวอย่างที่อัปโหลด" class="hidden w-full h-full object-contain bg-slate-900 rounded-xl" />
+
+                    <!-- แถบแสดงชื่อไฟล์มุมล่างซ้ายเมื่อมีภาพ -->
+                    <div id="file-info-badge" class="hidden absolute bottom-3 left-3 right-3 px-3 py-1.5 rounded-xl bg-slate-900/75 backdrop-blur-md text-white text-xs flex items-center justify-between gap-2">
+                        <span id="file-name-text" class="truncate font-medium">image.jpg</span>
+                        <span class="text-emerald-400 shrink-0 font-semibold">พร้อมวิเคราะห์</span>
+                    </div>
+
+                    <!-- หน้าต่างโหลดขณะกำลังประมวลผลภาพ -->
+                    <div id="analyzing-overlay" class="hidden absolute inset-0 bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center text-white z-10">
+                        <svg class="animate-spin h-8 w-8 text-indigo-400 mb-2.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="text-sm font-medium">กำลังวิเคราะห์รูปภาพ...</p>
+                    </div>
+                </div>
+
+                <!-- ปุ่มควบคุมการอัปโหลด / เปลี่ยนภาพ / ล้างภาพ -->
+                <div class="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <button id="primary-upload-btn" type="button" onclick="triggerFileSelect()"
+                        class="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-[0.99] text-white font-semibold text-sm shadow-md shadow-indigo-500/20 transition-all cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        <span id="primary-upload-label">อัปโหลดรูปภาพ</span>
+                    </button>
+
+                    <button id="clear-image-btn" type="button" onclick="clearUploadedImage()"
+                        class="hidden inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-700 font-medium text-sm transition-colors cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>ล้างรูปภาพ</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- คอลัมน์ขวา: ผลการวิเคราะห์จากโมเดล AI -->
+            <section class="lg:col-span-6 bg-white rounded-3xl border border-slate-200/80 shadow-lg shadow-slate-200/40 p-5 sm:p-7 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-5">
+                        <div>
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">ผลการวิเคราะห์จาก AI</h2>
+                            <p class="text-xs text-slate-500 mt-0.5">เรียงลำดับความน่าจะเป็นจากมากไปน้อย</p>
+                        </div>
+                        <span id="class-count-badge" class="text-xs font-medium px-3 py-1 rounded-xl bg-slate-100 text-slate-600">
+                            -- หมวดหมู่
+                        </span>
+                    </div>
+
+                    <!-- การ์ดสรุปผลลัพธ์อันดับ 1 -->
+                    <div id="top-prediction-card" class="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-50 via-violet-50/50 to-white border border-indigo-100/90 flex items-center justify-between gap-4 shadow-2xs">
+                        <div class="min-w-0">
+                            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                                </svg>
+                                ผลลัพธ์ที่แม่นยำที่สุด
+                            </span>
+                            <p id="top-class-name" class="text-xl sm:text-2xl font-bold text-slate-900 mt-1 truncate">รอการอัปโหลดรูปภาพ...</p>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <span class="block text-[11px] font-medium text-slate-400">ความมั่นใจ</span>
+                            <span id="top-class-score" class="text-2xl sm:text-3xl font-extrabold text-indigo-600 tabular-nums">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- รายการแถบความคืบหน้าของทุกหมวดหมู่ -->
+                    <div id="label-container" class="space-y-3.5">
+                        <!-- Skeleton ระหว่างโหลดโมเดล -->
+                        <div class="animate-pulse space-y-3.5">
+                            <div class="p-3.5 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div class="flex justify-between mb-2">
+                                    <div class="h-4 w-28 bg-slate-200 rounded"></div>
+                                    <div class="h-4 w-12 bg-slate-200 rounded"></div>
+                                </div>
+                                <div class="w-full h-2.5 bg-slate-200 rounded-full"></div>
+                            </div>
+                            <div class="p-3.5 rounded-2xl border border-slate-100 bg-slate-50">
+                                <div class="flex justify-between mb-2">
+                                    <div class="h-4 w-32 bg-slate-200 rounded"></div>
+                                    <div class="h-4 w-12 bg-slate-200 rounded"></div>
+                                </div>
+                                <div class="w-full h-2.5 bg-slate-200 rounded-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ข้อมูลโมเดลด้านล่าง -->
+                <div class="mt-8 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                    <span>รหัสโมเดล: <code class="text-slate-600 font-mono bg-slate-100 px-1.5 py-0.5 rounded">TheA52t0_</code></span>
+                    <span>ประมวลผลด้วย TensorFlow.js</span>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script type="text/javascript">
+        // ลิงก์โมเดล Teachable Machine
+        const MODEL_BASE_URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
+
+        // ตัวแปรสถานะของระบบ
+        let model = null;
+        let maxPredictions = 0;
+        let classLabels = [];
+
+        /**
+         * แสดงกล่องแจ้งเตือนข้อผิดพลาดภาษาไทย
+         */
+        function showError(title, message) {
+            const banner = document.getElementById('error-banner');
+            document.getElementById('error-title').textContent = title;
+            document.getElementById('error-message').textContent = message;
+            banner.classList.remove('hidden');
         }
-    }
-</script>
+
+        /**
+         * ซ่อนกล่องแจ้งเตือนข้อผิดพลาด
+         */
+        function hideError() {
+            document.getElementById('error-banner').classList.add('hidden');
+        }
+
+        /**
+         * อัปเดตสถานะการโหลดโมเดลที่มุมขวาบน
+         */
+        function setModelStatus(state, text) {
+            const badge = document.getElementById('model-status-badge');
+            const dot = document.getElementById('model-status-dot');
+            const label = document.getElementById('model-status-text');
+
+            label.textContent = text;
+            badge.className = "inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all shadow-2xs";
+            dot.className = "w-2 h-2 rounded-full";
+
+            if (state === 'loading') {
+                badge.classList.add('bg-amber-50', 'text-amber-700', 'border-amber-200');
+                dot.classList.add('bg-amber-500', 'animate-pulse');
+            } else if (state === 'ready') {
+                badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+                dot.classList.add('bg-emerald-500');
+            } else if (state === 'error') {
+                badge.classList.add('bg-red-50', 'text-red-700', 'border-red-200');
+                dot.classList.add('bg-red-500');
+            }
+        }
+
+        /**
+         * โหลดโมเดล Teachable Machine ทันทีเมื่อเปิดหน้าเว็บ
+         */
+        async function loadModel() {
+            if (model) return model;
+
+            try {
+                setModelStatus('loading', 'กำลังโหลดโมเดล AI...');
+                const modelURL = MODEL_BASE_URL + "model.json";
+                const metadataURL = MODEL_BASE_URL + "metadata.json";
+
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                classLabels = model.getClassLabels();
+
+                document.getElementById('class-count-badge').textContent = `${maxPredictions} หมวดหมู่`;
+                renderInitialRows(classLabels);
+                setModelStatus('ready', 'พร้อมใช้งาน');
+                return model;
+            } catch (err) {
+                console.error("Model loading error:", err);
+                setModelStatus('error', 'โหลดโมเดลไม่สำเร็จ');
+                showError(
+                    "ไม่สามารถโหลดโมเดล AI ได้",
+                    "กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต แล้วรีเฟรชหน้าเว็บใหม่อีกครั้ง"
+                );
+                throw err;
+            }
+        }
+
+        /**
+         * สร้างรายการแถบแสดงผลเริ่มต้นสำหรับทุกหมวดหมู่ (ค่า 0%)
+         */
+        function renderInitialRows(labels) {
+            const initialData = labels.map(name => ({
+                className: name,
+                probability: 0
+            }));
+            renderPredictions(initialData, false);
+        }
+
+        /**
+         * แสดงผลลัพธ์การทำนาย เรียงลำดับจากความมั่นใจสูงสุดไปต่ำสุด
+         */
+        function renderPredictions(predictions, hasImage = true) {
+            const labelContainer = document.getElementById("label-container");
+            if (!predictions || predictions.length === 0) return;
+
+            // คัดลอกและเรียงลำดับจากเปอร์เซ็นต์มากไปน้อย
+            const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+
+            // อัปเดตการ์ดสรุปอันดับ 1
+            const topPred = sorted[0];
+            if (hasImage) {
+                const topPercent = (topPred.probability * 100).toFixed(1);
+                document.getElementById('top-class-name').textContent = topPred.className;
+                document.getElementById('top-class-score').textContent = `${topPercent}%`;
+            } else {
+                document.getElementById('top-class-name').textContent = "รอการอัปโหลดรูปภาพ...";
+                document.getElementById('top-class-score').textContent = "0%";
+            }
+
+            // สร้างแถบความคืบหน้าสำหรับแต่ละหมวดหมู่
+            labelContainer.innerHTML = "";
+            sorted.forEach((item, index) => {
+                const prob = item.probability;
+                const pctText = (prob * 100).toFixed(1) + "%";
+                const widthPct = Math.max(0, Math.min(100, prob * 100)) + "%";
+                const isTop = hasImage && index === 0 && prob > 0.01;
+
+                const row = document.createElement("div");
+                row.className = isTop
+                    ? "p-3.5 rounded-2xl border border-indigo-200 bg-indigo-50/70 shadow-2xs transition-all duration-300"
+                    : "p-3.5 rounded-2xl border border-slate-100 bg-slate-50/80 transition-all duration-300";
+
+                row.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isTop ? 'bg-indigo-600' : 'bg-slate-300'}"></span>
+                            <span class="text-sm truncate ${isTop ? 'font-bold text-indigo-950' : 'font-medium text-slate-700'}">${item.className}</span>
+                            ${isTop ? '<span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-600 text-white shrink-0">อันดับ 1</span>' : ''}
+                        </div>
+                        <span class="text-sm tabular-nums ml-3 ${isTop ? 'font-extrabold text-indigo-600' : 'font-semibold text-slate-600'}">${pctText}</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-slate-200/80 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all duration-500 ease-out ${isTop ? 'bg-gradient-to-r from-indigo-600 to-violet-600' : 'bg-slate-400'}" style="width: ${widthPct}"></div>
+                    </div>
+                `;
+
+                labelContainer.appendChild(row);
+            });
+        }
+
+        /**
+         * เปิดหน้าต่างเลือกไฟล์รูปภาพ
+         */
+        function triggerFileSelect() {
+            document.getElementById('image-file-input').click();
+        }
+
+        /**
+         * จัดการเมื่อผู้ใช้เลือกหรือลากไฟล์รูปภาพเข้ามา (รับเฉพาะ 1 ไฟล์)
+         */
+        function handleImageUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            if (files.length > 1) {
+                showError("เลือกได้เพียง 1 รูปภาพ", "ระบบรองรับการอัปโหลดครั้งละ 1 รูปภาพ ระบบจะใช้รูปภาพแรกที่เลือกในการวิเคราะห์");
+            } else {
+                hideError();
+            }
+
+            const file = files[0];
+            processSingleImageFile(file);
+        }
+
+        /**
+         * ตรวจสอบไฟล์รูปภาพ แสดงตัวอย่าง และส่งเข้าโมเดลเพื่อทำนายผล
+         */
+        function processSingleImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError("รูปแบบไฟล์ไม่ถูกต้อง", "กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น (รองรับ JPG, PNG, WebP หรือ GIF)");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const imgEl = document.getElementById('uploaded-image-preview');
+                const promptEl = document.getElementById('upload-prompt');
+                const fileBadge = document.getElementById('file-info-badge');
+                const fileNameText = document.getElementById('file-name-text');
+                const dropzone = document.getElementById('dropzone');
+
+                imgEl.onload = async function () {
+                    await classifyImage(imgEl);
+                };
+
+                imgEl.src = e.target.result;
+                imgEl.classList.remove('hidden');
+                promptEl.classList.add('hidden');
+
+                // แสดงชื่อไฟล์และอัปเดตปุ่มควบคุม
+                fileNameText.textContent = file.name;
+                fileBadge.classList.remove('hidden');
+                dropzone.classList.remove('border-dashed', 'p-6');
+                dropzone.classList.add('border-solid', 'p-2');
+
+                document.getElementById('primary-upload-label').textContent = "เปลี่ยนรูปภาพ";
+                document.getElementById('clear-image-btn').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        /**
+         * รันโมเดล Teachable Machine เพื่อวิเคราะห์ภาพที่อัปโหลด
+         */
+        async function classifyImage(imgEl) {
+            const overlay = document.getElementById('analyzing-overlay');
+            overlay.classList.remove('hidden');
+
+            try {
+                await loadModel();
+                const predictions = await model.predict(imgEl);
+                renderPredictions(predictions, true);
+            } catch (err) {
+                console.error("Prediction error:", err);
+                showError("วิเคราะห์รูปภาพไม่สำเร็จ", "เกิดข้อผิดพลาดระหว่างประมวลผลรูปภาพ กรุณาลองใหม่อีกครั้ง");
+            } finally {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        /**
+         * ล้างรูปภาพที่อัปโหลดและรีเซ็ตผลลัพธ์กลับสู่ค่าเริ่มต้น
+         */
+        function clearUploadedImage() {
+            hideError();
+            const input = document.getElementById('image-file-input');
+            const imgEl = document.getElementById('uploaded-image-preview');
+            const promptEl = document.getElementById('upload-prompt');
+            const fileBadge = document.getElementById('file-info-badge');
+            const dropzone = document.getElementById('dropzone');
+
+            input.value = "";
+            imgEl.src = "";
+            imgEl.classList.add('hidden');
+            promptEl.classList.remove('hidden');
+            fileBadge.classList.add('hidden');
+
+            dropzone.classList.add('border-dashed', 'p-6');
+            dropzone.classList.remove('border-solid', 'p-2');
+
+            document.getElementById('primary-upload-label').textContent = "อัปโหลดรูปภาพ";
+            document.getElementById('clear-image-btn').classList.add('hidden');
+
+            if (classLabels.length > 0) {
+                renderInitialRows(classLabels);
+            }
+        }
+
+        /**
+         * ตั้งค่าระบบลากและวางไฟล์ (Drag & Drop) สำหรับ 1 รูปภาพ
+         */
+        function setupDragAndDrop() {
+            const dropzone = document.getElementById('dropzone');
+            if (!dropzone) return;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzone.addEventListener(eventName, () => {
+                    dropzone.classList.add('border-indigo-500', 'bg-indigo-50/70');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, () => {
+                    dropzone.classList.remove('border-indigo-500', 'bg-indigo-50/70');
+                }, false);
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files && files.length > 0) {
+                    if (files.length > 1) {
+                        showError("เลือกได้เพียง 1 รูปภาพ", "ระบบรองรับการวางไฟล์ครั้งละ 1 รูปภาพ ระบบจะใช้รูปภาพแรกในการวิเคราะห์");
+                    } else {
+                        hideError();
+                    }
+                    processSingleImageFile(files[0]);
+                }
+            }, false);
+        }
+
+        // เริ่มโหลดโมเดลและตั้งค่า Drag & Drop เมื่อเปิดหน้าเว็บ
+        window.addEventListener('DOMContentLoaded', () => {
+            setupDragAndDrop();
+            loadModel().catch(() => {});
+        });
+    </script>
+</body>
+</html>
