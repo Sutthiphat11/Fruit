@@ -11,8 +11,8 @@
     .card { background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
     h2 { margin: 0 0 8px; font-size: 20px; color: #111827; }
     #status { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
-    .btn { background: #4f46e5; color: #fff; padding: 10px 20px; border-radius: 8px; cursor: pointer; display: inline-block; font-weight: bold; }
-    .btn:hover { background: #4338ca; }
+    #uploadBtn { background: #4f46e5; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; }
+    #uploadBtn:disabled { background: #9ca3af; cursor: not-allowed; }
     #preview { max-width: 100%; max-height: 260px; margin-top: 16px; border-radius: 10px; display: none; object-fit: contain; }
     #label-container { margin-top: 18px; text-align: left; }
     .row { margin-bottom: 10px; font-size: 14px; }
@@ -23,51 +23,15 @@
 <body>
   <div class="card">
     <h2>จำแนกรูปภาพ AI</h2>
-    <div id="status">กำลังโหลดโมเดล...</div>
+    <div id="status">กำลังโหลดโมเดล... กรุณารอสักครู่</div>
 
-    <label class="btn" for="upload">อัปโหลดรูปภาพ</label>
-    <input type="file" id="upload" accept="image/*" hidden>
+    <button type="button" id="uploadBtn" disabled>กำลังเตรียมระบบ...</button>
+    <input type="file" id="upload" accept="image/*" style="display: none;">
 
     <img id="preview" alt="ตัวอย่างรูปภาพ">
     <div id="label-container"></div>
   </div>
 
   <script>
-    const URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/TheA52t0_/";
     let model;
-
-    window.addEventListener("load", async () => {
-      try {
-        model = await tmImage.load(URL + "model.json", URL + "metadata.json");
-        document.getElementById("status").innerText = "พร้อมใช้งาน (เลือกได้ 1 ภาพ)";
-      } catch (e) {
-        document.getElementById("status").innerText = "โหลดโมเดลไม่สำเร็จ ตรวจสอบลิงก์โมเดล";
-      }
-    });
-
-    document.getElementById("upload").addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file || !model) return;
-
-      const img = document.getElementById("preview");
-      img.src = window.URL.createObjectURL(file);
-      img.style.display = "inline-block";
-
-      img.onload = async () => {
-        const predictions = await model.predict(img);
-        predictions.sort((a, b) => b.probability - a.probability);
-
-        const container = document.getElementById("label-container");
-        container.innerHTML = predictions.map(p => {
-          const pct = (p.probability * 100).toFixed(1);
-          return `
-            <div class="row">
-              <div><b>${p.className}</b>: ${pct}%</div>
-              <div class="bar-bg"><div class="bar" style="width:${pct}%"></div></div>
-            </div>`;
-        }).join("");
-      };
-    });
-  </script>
-</body>
-</html>
