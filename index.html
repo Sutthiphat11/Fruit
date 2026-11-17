@@ -3,29 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teachable Machine Image Model</title>
+  <title>Teachable Machine Image Classifier</title>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
   <style>
-    body { font-family: sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 30px 16px; margin: 0; }
-    .card { background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
-    h2 { margin: 0 0 8px; font-size: 20px; color: #111827; }
-    #status { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
-    #uploadBtn { background: #4f46e5; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; }
-    #uploadBtn:disabled { background: #9ca3af; cursor: not-allowed; }
-    #preview { max-width: 100%; max-height: 260px; margin-top: 16px; border-radius: 10px; display: none; object-fit: contain; }
-    #label-container { margin-top: 18px; text-align: left; }
-    .row { margin-bottom: 10px; font-size: 14px; }
-    .bar-bg { background: #e5e7eb; height: 8px; border-radius: 99px; overflow: hidden; margin-top: 4px; }
-    .bar { background: #4f46e5; height: 100%; width: 0%; transition: width 0.3s; }
+    body { font-family: 'Prompt', sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; }
+    .card { background: #fff; padding: 28px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); max-width: 420px; width: 100%; text-align: center; }
+    h2 { margin: 0 0 6px; font-size: 22px; color: #1f2937; }
+    #status { font-size: 14px; color: #6b7280; margin-bottom: 20px; font-weight: 300; }
+    .upload-btn { background: #4f46e5; color: #fff; border: none; padding: 12px 28px; border-radius: 10px; cursor: pointer; font-size: 16px; font-weight: 600; font-family: 'Prompt', sans-serif; transition: background 0.2s; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2); width: 100%; }
+    .upload-btn:hover { background: #4338ca; }
+    .upload-btn:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; }
+    #preview { max-width: 100%; max-height: 240px; margin-top: 18px; border-radius: 12px; display: none; object-fit: contain; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    #label-container { margin-top: 20px; text-align: left; }
+    .row { margin-bottom: 12px; font-size: 14px; }
+    .label-info { display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: 600; color: #374151; }
+    .bar-bg { background: #e5e7eb; height: 10px; border-radius: 99px; overflow: hidden; }
+    .bar { background: #4f46e5; height: 100%; width: 0%; transition: width 0.4s ease-in-out; border-radius: 99px; }
   </style>
 </head>
 <body>
   <div class="card">
-    <h2>จำแนกรูปภาพ AI</h2>
+    <h2>ระบบจำแนกรูปภาพ AI</h2>
     <div id="status">กำลังโหลดโมเดล... กรุณารอสักครู่</div>
 
-    <button type="button" id="uploadBtn" disabled>กำลังเตรียมระบบ...</button>
+    <button type="button" id="uploadBtn" class="upload-btn" disabled>กำลังเตรียมระบบ...</button>
     <input type="file" id="upload" accept="image/*" style="display: none;">
 
     <img id="preview" alt="ตัวอย่างรูปภาพ">
@@ -42,10 +45,11 @@
     const previewImg = document.getElementById("preview");
     const labelContainer = document.getElementById("label-container");
 
+    // โหลดโมเดลเมื่อเปิดหน้าเว็บ
     window.addEventListener("load", async () => {
       try {
         model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
-        statusEl.innerText = "โมเดลพร้อมใช้งาน (เลือกได้ 1 ภาพ)";
+        statusEl.innerText = "พร้อมใช้งาน (อัปโหลดรูปภาพเพื่อวิเคราะห์)";
         statusEl.style.color = "#059669";
         uploadBtn.disabled = false;
         uploadBtn.innerText = "อัปโหลดรูปภาพ";
@@ -55,11 +59,13 @@
       }
     });
 
+    // กดปุ่มเพื่อเลือกรูป
     uploadBtn.addEventListener("click", () => {
       uploadInput.value = "";
       uploadInput.click();
     });
 
+    // เมื่อเลือกรูปภาพแล้ว
     uploadInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
       if (!file || !model) return;
@@ -71,21 +77,27 @@
       reader.onload = (event) => {
         previewImg.onload = async () => {
           try {
+            // สร้าง Canvas ย่อขนาดรูปภาพให้เหลือ 224x224 ตามที่โมเดลต้องการ
             const canvas = document.createElement("canvas");
             canvas.width = 224;
             canvas.height = 224;
             const ctx = canvas.getContext("2d");
             ctx.drawImage(previewImg, 0, 0, 224, 224);
 
+            // ทำนายผล
             const predictions = await model.predict(canvas);
             predictions.sort((a, b) => b.probability - a.probability);
 
+            // แสดงผลลัพธ์เป็นแถบเปอร์เซ็นต์
             labelContainer.innerHTML = predictions.map(p => {
               const pct = (p.probability * 100).toFixed(1);
               return `
                 <div class="row">
-                  <div><b>${p.className}</b>: ${pct}%</div>
-                  <div class="bar-bg"><div class="bar" style="width:${pct}%"></div></div>
+                  <div class="label-info">
+                    <span>${p.className}</span>
+                    <span>${pct}%</span>
+                  </div>
+                  <div class="bar-bg"><div class="bar" style="width: ${pct}%"></div></div>
                 </div>`;
             }).join("");
 
