@@ -1,135 +1,109 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Image Classifier | Teachable Machine</title>
-    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Prompt', sans-serif;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teachable Machine Image Model</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8.5/dist/teachablemachine-image.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #f3f4f6; display: flex; justify-content: center; padding: 30px 16px; margin: 0; }
+    .card { background: #fff; padding: 24px; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
+    h2 { margin: 0 0 8px; font-size: 20px; color: #111827; }
+    #status { font-size: 14px; color: #6b7280; margin-bottom: 16px; }
+    #uploadBtn { background: #4f46e5; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: bold; }
+    #uploadBtn:disabled { background: #9ca3af; cursor: not-allowed; }
+    #preview { max-width: 100%; max-height: 260px; margin-top: 16px; border-radius: 10px; display: none; object-fit: contain; }
+    #label-container { margin-top: 18px; text-align: left; }
+    .row { margin-bottom: 10px; font-size: 14px; }
+    .bar-bg { background: #e5e7eb; height: 8px; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+    .bar { background: #4f46e5; height: 100%; width: 0%; transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>จำแนกรูปภาพ AI</h2>
+    <div id="status">กำลังโหลดโมเดล... กรุณารอสักครู่</div>
 
-        body {
-            background: radial-gradient(circle at top left, #1e293b, #0f172a);
-            color: #f8fafc;
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
+    <button type="button" id="uploadBtn" disabled>กำลังเตรียมระบบ...</button>
+    <input type="file" id="upload" accept="image/*" style="display: none;">
 
-        .container {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 24px;
-            padding: 40px 30px;
-            width: 100%;
-            max-width: 480px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            text-align: center;
-        }
+    <img id="preview" alt="ตัวอย่างรูปภาพ">
+    <div id="label-container"></div>
+  </div>
 
-        h1 {
-            font-size: 1.6rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            background: linear-gradient(90deg, #38bdf8, #818cf8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+  <script>
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/mqW7JUgle/";
+    let model;
 
-        p.subtitle {
-            font-size: 0.9rem;
-            color: #94a3b8;
-            margin-bottom: 25px;
-        }
+    const statusEl = document.getElementById("status");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const uploadInput = document.getElementById("upload");
+    const previewImg = document.getElementById("preview");
+    const labelContainer = document.getElementById("label-container");
 
-        /* พื้นที่แสดงรูปภาพ */
-        .image-box {
-            width: 100%;
-            height: 260px;
-            border: 2px dashed rgba(56, 189, 248, 0.4);
-            border-radius: 16px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            margin-bottom: 25px;
-            overflow: hidden;
-            background: rgba(15, 23, 42, 0.6);
-            position: relative;
-            transition: border-color 0.3s ease;
-        }
+    window.addEventListener("load", async () => {
+      try {
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        statusEl.innerText = "โมเดลพร้อมใช้งาน (เลือกได้ 1 ภาพ)";
+        statusEl.style.color = "#059669";
+        uploadBtn.disabled = false;
+        uploadBtn.innerText = "อัปโหลดรูปภาพ";
+      } catch (err) {
+        statusEl.innerText = "โหลดโมเดลไม่สำเร็จ: " + err.message;
+        statusEl.style.color = "#dc2626";
+      }
+    });
 
-        .image-box:hover {
-            border-color: #38bdf8;
-        }
+    uploadBtn.addEventListener("click", () => {
+      uploadInput.value = "";
+      uploadInput.click();
+    });
 
-        .image-box img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            display: none;
-            border-radius: 12px;
-        }
+    uploadInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file || !model) return;
 
-        .placeholder-text {
-            color: #64748b;
-            font-size: 0.95rem;
-            pointer-events: none;
-        }
+      statusEl.innerText = "กำลังประมวลผลรูปภาพ...";
+      statusEl.style.color = "#2563eb";
 
-        /* ปุ่มอัปโหลด */
-        input[type="file"] {
-            display: none;
-        }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        previewImg.onload = async () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = 224;
+            canvas.height = 224;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(previewImg, 0, 0, 224, 224);
 
-        .upload-btn {
-            display: inline-block;
-            background: linear-gradient(135deg, #38bdf8, #6366f1);
-            color: #ffffff;
-            padding: 12px 28px;
-            border-radius: 50px;
-            font-weight: 600;
-            font-size: 1rem;
-            cursor: pointer;
-            box-shadow: 0 10px 20px -5px rgba(99, 102, 241, 0.5);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            margin-bottom: 25px;
-        }
+            const predictions = await model.predict(canvas);
+            predictions.sort((a, b) => b.probability - a.probability);
 
-        .upload-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 15px 25px -5px rgba(99, 102, 241, 0.7);
-        }
+            labelContainer.innerHTML = predictions.map(p => {
+              const pct = (p.probability * 100).toFixed(1);
+              return `
+                <div class="row">
+                  <div><b>${p.className}</b>: ${pct}%</div>
+                  <div class="bar-bg"><div class="bar" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join("");
 
-        .upload-btn:active {
-            transform: translateY(0);
-        }
+            statusEl.innerText = "วิเคราะห์เสร็จสิ้น";
+            statusEl.style.color = "#059669";
+            uploadBtn.innerText = "เปลี่ยนรูปภาพ";
+          } catch (err) {
+            statusEl.innerText = "วิเคราะห์ภาพไม่สำเร็จ: " + err.message;
+            statusEl.style.color = "#dc2626";
+          }
+        };
 
-        .upload-btn.disabled {
-            background: #475569;
-            box-shadow: none;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
+        previewImg.src = event.target.result;
+        previewImg.style.display = "inline-block";
+      };
 
-        /* ส่วนแสดงผลลัพธ์ */
-        #label-container {
-            text-align: left;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .prediction-item {
-            background: rgba(15, 23, 42, 0.5);
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,
+      reader.readAsDataURL(file);
+    });
+  </script>
+</body>
+</html>
