@@ -57,7 +57,7 @@
                 <!-- สถานะการโหลดโมเดล -->
                 <div id="model-status-badge" class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 transition-all shadow-2xs">
                     <span id="model-status-dot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                    <span id="model-status-text">กำลังโหลดโมเดล AI...</span>
+                    <span id="model-status-text">กำลังโหลดโมเดล...</span>
                 </div>
             </div>
         </div>
@@ -101,7 +101,7 @@
                 </div>
 
                 <!-- Input File แบบซ่อน (รองรับเฉพาะ 1 ไฟล์ภาพ) -->
-                <input type="file" id="image-file-input" accept="image/jpeg,image/png,image/webp,image/gif" class="hidden" onchange="handleImageUpload(event)">
+                <input type="file" id="image-file-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
 
                 <!-- Canvas ซ่อนสำหรับปรับขนาดภาพเป็น 224x224 ก่อนส่งเข้าโมเดล ป้องกันปัญหา Tainted Canvas / ภาพใหญ่เกินไป -->
                 <canvas id="model-input-canvas" width="224" height="224" class="hidden"></canvas>
@@ -230,86 +230,25 @@
         let maxPredictions = 0;
         let classLabels = [];
         let isModelLoading = false;
+        let currentObjectUrl = null;
+        let initialDocumentHtml = "";
+
+        // เก็บโครงสร้างโค้ดต้นฉบับที่สะอาดทันทีที่โหลดหน้าเว็บ เพื่อใช้สำหรับปุ่มคัดลอกโค้ดไปยัง GitHub Pages
+        document.addEventListener('DOMContentLoaded', () => {
+            initialDocumentHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+        });
 
         /**
          * แสดงกล่องแจ้งเตือนข้อผิดพลาดภาษาไทย
          */
-        function showError(title, message, showRetry = false) {
-            const banner = document.getElementById('error-banner');
-            const retryBtn = document.getElementById('retry-model-btn');
-            document.getElementById('error-title').textContent = title;
-            document.getElementById('error-message').textContent = message;
-
-            if (showRetry) {
-                retryBtn.classList.remove('hidden');
-            } else {
-                retryBtn.classList.add('hidden');
-            }
-            banner.classList.remove('hidden');
-        }
-
-        /**
-         * ซ่อนกล่องแจ้งเตือนข้อผิดพลาด
-         */
-        function hideError() {
-            document.getElementById('error-banner').classList.add('hidden');
-        }
-
-        /**
-         * อัปเดตสถานะการโหลดโมเดลที่มุมขวาบน
-         */
-        function setModelStatus(state, text) {
-            const badge = document.getElementById('model-status-badge');
-            const dot = document.getElementById('model-status-dot');
-            const label = document.getElementById('model-status-text');
-
-            label.textContent = text;
-            badge.className = "inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all shadow-2xs";
-            dot.className = "w-2 h-2 rounded-full";
-
-            if (state === 'loading') {
-                badge.classList.add('bg-amber-50', 'text-amber-700', 'border-amber-200');
-                dot.classList.add('bg-amber-500', 'animate-pulse');
-            } else if (state === 'ready') {
-                badge.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
-                dot.classList.add('bg-emerald-500');
-            } else if (state === 'error') {
-                badge.classList.add('bg-red-50', 'text-red-700', 'border-red-200');
-                dot.classList.add('bg-red-500');
-            }
-        }
-
-        /**
-         * รอให้สคริปต์ภายนอก (window.tf และ window.tmImage) โหลดเสร็จสมบูรณ์ก่อนเรียกใช้งาน
-         */
-        function waitForLibraries(timeoutMs = 15000) {
-            return new Promise((resolve, reject) => {
-                if (window.tf && window.tmImage) {
-                    return resolve();
-                }
-                const startTime = Date.now();
-                const interval = setInterval(() => {
-                    if (window.tf && window.tmImage) {
-                        clearInterval(interval);
-                        resolve();
-                    } else if (Date.now() - startTime > timeoutMs) {
-                        clearInterval(interval);
-                        reject(new Error("ไลบรารี TensorFlow.js หรือ Teachable Machine โหลดไม่ทันเวลา"));
-                    }
-                }, 150);
-            });
-        }
-
-        /**
-         * โหลดโมเดล Teachable Machine ทันทีเมื่อเปิดหน้าเว็บ
-         */
+// ... existing code ... -->
         async function loadModel() {
             if (model) return model;
             if (isModelLoading) return null;
 
             isModelLoading = true;
             try {
-                setModelStatus('loading', 'กำลังโหลดโมเดล AI...');
+                setModelStatus('loading', 'กำลังโหลดโมเดล...');
                 hideError();
 
                 // ตรวจสอบว่า window.tf และ window.tmImage พร้อมใช้งานแล้ว
@@ -324,7 +263,7 @@
 
                 document.getElementById('class-count-badge').textContent = `${maxPredictions} หมวดหมู่`;
                 renderInitialRows(classLabels);
-                setModelStatus('ready', 'พร้อมใช้งาน');
+                setModelStatus('ready', 'โมเดลพร้อมใช้งาน');
                 return model;
             } catch (err) {
                 console.error("Model loading error:", err);
@@ -341,11 +280,56 @@
         }
 
         /**
-         * ลองโหลดโมเดลใหม่อีกครั้งเมื่อกดปุ่มในแถบแจ้งเตือน
+         * คืนหน่วยความจำของ Object URL เดิมเมื่อเปลี่ยนภาพหรือล้างรูปภาพ
          */
-        function retryLoadModel() {
-            model = null;
-            loadModel().catch(() => {});
+        function revokeCurrentObjectUrl() {
+            if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+            }
+        }
+
+        /**
+         * ตรวจสอบไฟล์รูปภาพ แสดงตัวอย่างผ่าน Object URL และส่ง Canvas เข้าโมเดลเพื่อทำนายผล
+         */
+        function processSingleImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showError("รูปแบบไฟล์ไม่ถูกต้อง", "กรุณาอัปโหลดไฟล์รูปภาพเท่านั้น (รองรับ JPG, PNG, WebP หรือ GIF)");
+                return;
+            }
+
+            // คืนหน่วยความจำของภาพก่อนหน้า
+            revokeCurrentObjectUrl();
+
+            const imgEl = document.getElementById('uploaded-image-preview');
+            const promptEl = document.getElementById('upload-prompt');
+            const fileBadge = document.getElementById('file-info-badge');
+            const fileNameText = document.getElementById('file-name-text');
+            const dropzone = document.getElementById('dropzone');
+
+            const objectUrl = URL.createObjectURL(file);
+            currentObjectUrl = objectUrl;
+
+            imgEl.onload = async function () {
+                await classifyImage(imgEl);
+            };
+            imgEl.onerror = function () {
+                revokeCurrentObjectUrl();
+                showError("อ่านไฟล์รูปภาพไม่สำเร็จ", "ไม่สามารถเปิดไฟล์รูปภาพนี้ได้ กรุณาลองเลือกไฟล์ภาพอื่น");
+            };
+
+            imgEl.src = objectUrl;
+            imgEl.classList.remove('hidden');
+            promptEl.classList.add('hidden');
+
+            // แสดงชื่อไฟล์และอัปเดตปุ่มควบคุม
+            fileNameText.textContent = file.name;
+            fileBadge.classList.remove('hidden');
+            dropzone.classList.remove('border-dashed', 'p-6');
+            dropzone.classList.add('border-solid', 'p-2');
+
+            document.getElementById('primary-upload-label').textContent = "เปลี่ยนรูปภาพ";
+            document.getElementById('clear-image-btn').classList.remove('hidden');
         }
 
         /**
@@ -525,6 +509,8 @@
          */
         function clearUploadedImage() {
             hideError();
+            revokeCurrentObjectUrl();
+
             const input = document.getElementById('image-file-input');
             const imgEl = document.getElementById('uploaded-image-preview');
             const promptEl = document.getElementById('upload-prompt');
@@ -533,7 +519,7 @@
             const canvas = document.getElementById('model-input-canvas');
 
             input.value = "";
-            imgEl.src = "";
+            imgEl.removeAttribute('src');
             imgEl.classList.add('hidden');
             promptEl.classList.remove('hidden');
             fileBadge.classList.add('hidden');
@@ -553,12 +539,12 @@
         }
 
         /**
-         * คัดลอกโค้ด HTML ทั้งหมดของหน้านี้เพื่อนำไปวางในไฟล์ index.html บน GitHub
+         * คัดลอกโค้ด HTML ต้นฉบับที่สะอาดสมบูรณ์เพื่อนำไปวางในไฟล์ index.html บน GitHub Pages
          */
         function copyHtmlCode() {
-            const fullHtml = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+            const cleanHtml = initialDocumentHtml || ("<!DOCTYPE html>\n" + document.documentElement.outerHTML);
             const textarea = document.createElement('textarea');
-            textarea.value = fullHtml;
+            textarea.value = cleanHtml;
             textarea.style.position = 'fixed';
             textarea.style.opacity = '0';
             document.body.appendChild(textarea);
